@@ -1,4 +1,4 @@
-module Control.Monad.Cont.Indexed where
+module Control.Monad.Cont.Indexed.Class where
 
 import Control.Monad.Indexed (class IxMonad)
 
