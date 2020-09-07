@@ -9,6 +9,7 @@ import Control.Monad.Indexed (class IxApplicative, class IxApply, class IxBind, 
 import Control.Monad.Reader (class MonadAsk, class MonadReader, ask, local)
 import Control.Monad.State (class MonadState, state)
 import Control.Parallel (class Parallel, parallel, sequential)
+import Control.Plus (class Plus, empty)
 import Data.Newtype (class Newtype)
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
@@ -47,17 +48,20 @@ instance fonctorIxContT :: Functor m => Functor (IxContT m i j) where
 instance applicativeIxContT :: Applicative m => Applicative (IxContT m i i) where
   pure = ipure
 
-instance applyIxContT :: Applicative m => Apply (IxContT m i i) where
+instance applyIxContT :: Applicative m => Apply (IxContT m r r) where
   apply = iapply
 
-instance bindIxContT :: (Functor m, Applicative m) => Bind (IxContT m i i) where
+instance bindIxContT :: (Functor m, Applicative m) => Bind (IxContT m r r) where
   bind k m = k :>>= m
 
-instance semigroupIxContT ::  Semigroup (m i) => Semigroup (IxContT m i j a) where
-  append (Do f) (Do g) = Do (\k -> f k <> g k)
+instance semigroupIxContT ::  Semigroup (m r) => Semigroup (IxContT m r o i) where
+  append (Do f) (Do g) = Do $ \k -> f k <> g k
 
-instance altIxContT ::  (Alt m) => Alt (IxContT m i j) where
-  alt (Do f) (Do g) = Do (\k -> f k <|> g k)
+instance altIxContT ::  Alt m => Alt (IxContT m r o) where
+  alt (Do f) (Do g) = Do $ \k -> f k <|> g k
+
+instance monoidIxContT ::  Monoid (m r) => Monoid (IxContT m r o i) where
+  mempty = Do $ \_ -> mempty
 
 instance monadIxContT :: Monad m => Monad (IxContT m i i)
 
@@ -85,8 +89,17 @@ instance monadStateIxContT :: MonadState e m => MonadState e (IxContT m i i) whe
 
 {-----------------------------------------------–-------------------------------------------}
 
+return :: forall m r o i . Monad m => r -> IxContT m r o i
+return = Do <<< const <<< pure
+
+emptyCont :: forall m r o i . Plus m => IxContT m r o i
+emptyCont = Do $ \_ -> empty
+
 ilift :: forall m r a . Monad m => m a -> IxContT m r r a
 ilift m = Do (m >>= _)
 
 runIxContT :: forall m r o a . Functor m => IxContT m r o a -> (a -> m o) ->  m r 
 runIxContT (Do m) f = m f
+
+evalIxContT :: forall m r o . Applicative m => IxContT m r o o -> m r
+evalIxContT = (flip runIxContT) pure

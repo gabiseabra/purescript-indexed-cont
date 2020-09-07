@@ -10,6 +10,7 @@ You can edit this file as you like.
   , "indexed-monad"
   , "parallel"
   , "psci-support"
+  , "spec"
   , "transformers"
   ]
 , packages = ./packages.dhall
