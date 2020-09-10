@@ -3,19 +3,23 @@ module Test.Main where
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Monad.Indexed.Qualified as Ix
 import Control.Monad.Cont.Indexed (IxContT(..), emptyCont, evalIxContT, return, runIxContT)
 import Control.Monad.Indexed ((:>>=))
+import Control.Monad.Indexed.Qualified as Ix
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Effect.Aff (launchAff_)
+import Effect.Aff (Milliseconds(..), delay, launchAff_, parallel, sequential)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, shouldReturn)
 import Test.Spec.Reporter (consoleReporter)
-import Test.Spec.Runner (runSpec)
+import Test.Spec.Runner (Config, defaultConfig, runSpec')
+
+config :: Config
+config = defaultConfig { timeout = Just $ Milliseconds 150.0 }
 
 main :: Effect Unit
-main = launchAff_ $ runSpec [ consoleReporter ] $ do
+main = launchAff_ $ runSpec' config [ consoleReporter ] $ do
   functorSpec
   bindSpec
   applySpec
@@ -23,6 +27,7 @@ main = launchAff_ $ runSpec [ consoleReporter ] $ do
   altSpec
   monoidSpec
   monadSpec
+  parallelSpec
 
 functorSpec :: Spec Unit
 functorSpec = describe "functor IxContT" do
@@ -80,3 +85,19 @@ monadSpec = describe "monad IxContT" do
           b <- Ix.pure 2
           Do $ \k -> show <$> k (a * b)
     runIxContT cont ((*) 2 >>> pure) `shouldReturn` "8"
+
+parallelSpec :: Spec Unit
+parallelSpec = describe "parallel" do
+  it "parallel" do
+    let
+      after :: forall m r a . MonadAff m => Number -> a -> IxContT m r r a
+      after ms x = do
+        liftAff $ delay $ Milliseconds ms
+        pure x
+      cont = sequential
+             $ (\a b c -> [a, b, c])
+            <$> parallel (after 100.0 1)
+            <*> parallel (after 100.0 2)
+            <*> parallel (after 100.0 3)
+    evalIxContT cont `shouldReturn` [1, 2, 3]
+

@@ -10,9 +10,11 @@ import Control.Monad.Reader (class MonadAsk, class MonadReader, ask, local)
 import Control.Monad.State (class MonadState, state)
 import Control.Parallel (class Parallel, parallel, sequential)
 import Control.Plus (class Plus, empty)
-import Data.Newtype (class Newtype)
+import Data.Newtype (class Newtype, unwrap, wrap)
+import Effect.Aff.AVar as AVar
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class.Console (logShow)
 
 newtype IxContT m r o a = Do ((a -> m o) -> m r)
 
@@ -74,10 +76,6 @@ instance monadAffIxContT :: MonadAff m => MonadAff (IxContT m i i) where
 instance monadContIxContT :: Monad m => Cont.MonadCont (IxContT m i i) where 
   callCC = callCC
 
-instance parallelIxContT :: Parallel f m => Parallel (IxContT f i i) (IxContT m i i) where 
-  parallel (Do f) = Do $ \k -> parallel $ f \i -> sequential $ k i
-  sequential (Do f) = Do $ \k -> sequential $ f \i -> parallel $ k i
-
 instance monadAskIxContT :: MonadAsk e m => MonadAsk e (IxContT m i i) where
   ask = ilift ask
 
@@ -87,7 +85,46 @@ instance monadReaderIxContT :: MonadReader e m => MonadReader e (IxContT m i i) 
 instance monadStateIxContT :: MonadState e m => MonadState e (IxContT m i i) where
   state = ilift <<< state
 
-{-----------------------------------------------–-------------------------------------------}
+{-----------------------------------------------–------------------------------}
+
+parApplyCont :: forall f m r a b
+   . Parallel f m
+  => Alt f
+  => MonadAff m
+  => IxContT m r r (a -> b)
+  -> IxContT m r r a
+  -> IxContT m r r b
+parApplyCont cf ca = callCC \cont -> do
+  rf <- liftAff $ AVar.empty
+  ra <- liftAff $ AVar.empty
+  let
+    take :: forall x . AVar.AVar x -> m x
+    take = liftAff <<< AVar.take
+    put :: forall x . AVar.AVar x -> x -> m Unit
+    put var = liftAff <<< (flip AVar.put) var
+    cont' f a = evalIxContT $ cont (f a)
+    mf = runIxContT cf $ \f -> put rf f *> take ra >>= \a -> cont' f a
+    ma = runIxContT ca $ \a -> put ra a *> take rf >>= \f -> cont' f a
+  Do \_ -> sequential $ parallel ma <|> parallel mf
+
+newtype IxParContT m r o a = Par ((a -> m o) -> m r)
+
+derive instance newtypeIxParContT :: Newtype (IxParContT m r o a) _
+
+instance fonctorIxParContT :: (Parallel f m, Alt f, MonadAff m) => Functor (IxParContT m r r) where
+  map f = parallel <<< map f <<< sequential
+
+instance applicativeIxParContT :: (Parallel f m, Alt f, MonadAff m) => Applicative (IxParContT m r r) where
+  pure = parallel <<< pure
+
+instance applyIxParContT :: (Parallel f m, Alt f, MonadAff m) => Apply (IxParContT m r r) where
+  apply cf ca = parallel $ parApplyCont (sequential cf) (sequential ca)
+
+instance parallelIxContT :: (Parallel f m, Alt f, MonadAff m) => Parallel (IxParContT m r r) (IxContT m r r) where 
+  parallel = wrap <<< unwrap
+  sequential = wrap <<< unwrap
+
+{-----------------------------------------------–------------------------------}
 
 return :: forall m r o i . Monad m => r -> IxContT m r o i
 return = Do <<< const <<< pure
@@ -97,6 +134,12 @@ emptyCont = Do $ \_ -> empty
 
 ilift :: forall m r a . Monad m => m a -> IxContT m r r a
 ilift m = Do (m >>= _)
+
+fromContT :: forall m r a . Monad m => Cont.ContT r m a -> IxContT m r r a
+fromContT = wrap <<< unwrap
+
+toContT :: forall m r a . Monad m => IxContT m r r a -> Cont.ContT r m a
+toContT = wrap <<< unwrap
 
 runIxContT :: forall m r o a . Functor m => IxContT m r o a -> (a -> m o) ->  m r 
 runIxContT (Do m) f = m f
