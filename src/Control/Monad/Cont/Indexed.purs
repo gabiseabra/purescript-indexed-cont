@@ -44,7 +44,7 @@ callCC f = shift (\k -> f (adapt k) :>>= k)
     adapt :: forall x i' b' . (a -> IxContT m o x x) -> a -> IxContT m o i' b'
     adapt k x = k x :>>= (Do <<< const <<< pure)
 
-instance fonctorIxContT :: Functor m => Functor (IxContT m i j) where
+instance functorIxContT :: Functor m => Functor (IxContT m r o) where
   map = imap
 
 instance applicativeIxContT :: Applicative m => Applicative (IxContT m r r) where
@@ -56,7 +56,7 @@ instance applyIxContT :: Applicative m => Apply (IxContT m r r) where
 instance bindIxContT :: (Functor m, Applicative m) => Bind (IxContT m r r) where
   bind k m = k :>>= m
 
-instance semigroupIxContT ::  Semigroup (m r) => Semigroup (IxContT m r o i) where
+instance semigroupIxContT ::  Semigroup (m r) => Semigroup (IxContT m r o a) where
   append (Do f) (Do g) = Do $ \k -> f k <> g k
 
 instance altIxContT ::  Alt m => Alt (IxContT m r o) where
@@ -67,27 +67,27 @@ instance plusIxContT :: Plus m => Plus (IxContT m r o) where
 
 instance alternativeIxContT :: Alternative m => Alternative (IxContT m r r)
 
-instance monoidIxContT ::  Monoid (m r) => Monoid (IxContT m r o i) where
+instance monoidIxContT ::  Monoid (m r) => Monoid (IxContT m r o a) where
   mempty = Do $ \_ -> mempty
 
-instance monadIxContT :: Monad m => Monad (IxContT m i i)
+instance monadIxContT :: Monad m => Monad (IxContT m r r)
 
-instance monadEffectIxContT :: MonadEffect m => MonadEffect (IxContT m i i) where
+instance monadEffectIxContT :: MonadEffect m => MonadEffect (IxContT m r r) where
   liftEffect = ilift <<< liftEffect
 
-instance monadAffIxContT :: MonadAff m => MonadAff (IxContT m i i) where
+instance monadAffIxContT :: MonadAff m => MonadAff (IxContT m r r) where
   liftAff = ilift <<< liftAff
 
-instance monadContIxContT :: Monad m => Cont.MonadCont (IxContT m i i) where 
+instance monadContIxContT :: Monad m => Cont.MonadCont (IxContT m r r) where 
   callCC = callCC
 
-instance monadAskIxContT :: MonadAsk e m => MonadAsk e (IxContT m i i) where
+instance monadAskIxContT :: MonadAsk e m => MonadAsk e (IxContT m r r) where
   ask = ilift ask
 
-instance monadReaderIxContT :: MonadReader e m => MonadReader e (IxContT m i i) where
+instance monadReaderIxContT :: MonadReader e m => MonadReader e (IxContT m r r) where
   local f m = Do $ \k -> local f (runIxContT m k)
 
-instance monadStateIxContT :: MonadState e m => MonadState e (IxContT m i i) where
+instance monadStateIxContT :: MonadState e m => MonadState e (IxContT m r r) where
   state = ilift <<< state
 
 {-----------------------------------------------–------------------------------}
@@ -99,7 +99,7 @@ parApplyCont :: forall f m r a b
   => IxContT m r r (a -> b)
   -> IxContT m r r a
   -> IxContT m r r b
-parApplyCont cf ca = callCC \cont -> do
+parApplyCont cf ca = Do \k -> do
   rf <- liftAff $ AVar.empty
   ra <- liftAff $ AVar.empty
   let
@@ -107,10 +107,10 @@ parApplyCont cf ca = callCC \cont -> do
     take = liftAff <<< AVar.take
     put :: forall x . AVar.AVar x -> x -> m Unit
     put var = liftAff <<< (flip AVar.put) var
-    cont' f a = evalIxContT $ cont (f a)
+    cont' f a = k (f a)
     mf = runIxContT cf $ \f -> put rf f *> take ra >>= \a -> cont' f a
     ma = runIxContT ca $ \a -> put ra a *> take rf >>= \f -> cont' f a
-  Do \_ -> sequential $ parallel ma <|> parallel mf
+  sequential $ parallel ma <|> parallel mf
 
 newtype IxParContT m r o a = Par ((a -> m o) -> m r)
 
@@ -139,7 +139,7 @@ instance parallelIxContT :: (Parallel f m, Alt f, MonadAff m) => Parallel (IxPar
 
 {-----------------------------------------------–------------------------------}
 
-esc :: forall m r o i . Monad m => r -> IxContT m r o i
+esc :: forall m r o a . Monad m => r -> IxContT m r o a
 esc = Do <<< const <<< pure
 
 ilift :: forall m r a . Monad m => m a -> IxContT m r r a
