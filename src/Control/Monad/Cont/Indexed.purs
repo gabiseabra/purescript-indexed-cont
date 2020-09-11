@@ -3,6 +3,7 @@ module Control.Monad.Cont.Indexed where
 import Prelude
 
 import Control.Alt (class Alt, (<|>))
+import Control.Alternative (class Alternative)
 import Control.Monad.Cont as Cont
 import Control.Monad.Cont.Indexed.Class (class IxMonadCont, shift)
 import Control.Monad.Indexed (class IxApplicative, class IxApply, class IxBind, class IxFunctor, class IxMonad, iapply, imap, ipure, (:>>=))
@@ -14,7 +15,6 @@ import Data.Newtype (class Newtype, unwrap, wrap)
 import Effect.Aff.AVar as AVar
 import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Class.Console (logShow)
 
 newtype IxContT m r o a = Do ((a -> m o) -> m r)
 
@@ -47,7 +47,7 @@ callCC f = shift (\k -> f (adapt k) :>>= k)
 instance fonctorIxContT :: Functor m => Functor (IxContT m i j) where
   map = imap
 
-instance applicativeIxContT :: Applicative m => Applicative (IxContT m i i) where
+instance applicativeIxContT :: Applicative m => Applicative (IxContT m r r) where
   pure = ipure
 
 instance applyIxContT :: Applicative m => Apply (IxContT m r r) where
@@ -61,6 +61,11 @@ instance semigroupIxContT ::  Semigroup (m r) => Semigroup (IxContT m r o i) whe
 
 instance altIxContT ::  Alt m => Alt (IxContT m r o) where
   alt (Do f) (Do g) = Do $ \k -> f k <|> g k
+
+instance plusIxContT :: Plus m => Plus (IxContT m r o) where
+  empty = Do $ \_ -> empty
+
+instance alternativeIxContT :: Alternative m => Alternative (IxContT m r r)
 
 instance monoidIxContT ::  Monoid (m r) => Monoid (IxContT m r o i) where
   mempty = Do $ \_ -> mempty
@@ -120,17 +125,22 @@ instance applicativeIxParContT :: (Parallel f m, Alt f, MonadAff m) => Applicati
 instance applyIxParContT :: (Parallel f m, Alt f, MonadAff m) => Apply (IxParContT m r r) where
   apply cf ca = parallel $ parApplyCont (sequential cf) (sequential ca)
 
+instance altIxParContT :: (Parallel f m, Alt f, MonadAff m) => Alt (IxParContT m r r) where
+  alt (Par c) (Par c') = Par $ \k -> sequential $ parallel (c k) <|> parallel (c' k)
+
+instance plusIxParContT :: (Parallel f m, Alt f, Plus m, MonadAff m) => Plus (IxParContT m r r) where
+  empty = Par $ \_ -> empty
+
+instance alternativeIxParContT :: (Parallel f m, Alt f, Plus m, MonadAff m) => Alternative (IxParContT m r r)
+
 instance parallelIxContT :: (Parallel f m, Alt f, MonadAff m) => Parallel (IxParContT m r r) (IxContT m r r) where 
   parallel = wrap <<< unwrap
   sequential = wrap <<< unwrap
 
 {-----------------------------------------------–------------------------------}
 
-return :: forall m r o i . Monad m => r -> IxContT m r o i
-return = Do <<< const <<< pure
-
-emptyCont :: forall m r o i . Plus m => IxContT m r o i
-emptyCont = Do $ \_ -> empty
+esc :: forall m r o i . Monad m => r -> IxContT m r o i
+esc = Do <<< const <<< pure
 
 ilift :: forall m r a . Monad m => m a -> IxContT m r r a
 ilift m = Do (m >>= _)
