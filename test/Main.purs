@@ -32,6 +32,8 @@ main = launchAff_ $ runSpec' config [ consoleReporter ] $ do
   parallelSpec
   parallelAltSpec
   parallelPlusSpec
+  parallelSmigroupSpec
+  parallelMonoidSpec
 
 functorSpec :: Spec Unit
 functorSpec = describe "IxContT/Functor" do
@@ -132,3 +134,19 @@ parallelPlusSpec = describe "IxParContT/Plus" do
     let cont = sequential $ parallel (after 100.0 1) <|> empty
     evalIxContT cont `shouldReturn` 1
 
+parallelSemigroupSpec :: Spec Unit
+parallelSemigroupSpec = describe "IxParContT/Semigroup" do
+  it "alt" do
+    let cont = sequential
+             $  parallel (after 100.0 [1])
+            <>  parallel (after 110.0 [2])
+    evalIxContT cont `shouldReturn` [1, 2]
+
+parallelMonoidSpec :: Spec Unit
+parallelMonoidSpec = describe "IxParContT/Monoid" do
+  it "left adentity" do
+    let cont = sequential $ mempty <> parallel (after 100.0 [1])
+    evalIxContT cont `shouldReturn` [1]
+  it "right identity" do
+    let cont = sequential $ parallel (after 100.0 [1]) <> mempty
+    evalIxContT cont `shouldReturn` [1]

@@ -125,6 +125,12 @@ instance applicativeIxParContT :: (Parallel f m, Alt f, MonadAff m) => Applicati
 instance applyIxParContT :: (Parallel f m, Alt f, MonadAff m) => Apply (IxParContT m r r) where
   apply cf ca = parallel $ parApplyCont (sequential cf) (sequential ca)
 
+instance semigroupParContT :: (Parallel f m, Semigroup (f r)) => Semigroup (IxParContT m r r a) where
+  append (Par c) (Par c') = Par $ \k -> sequential $ parallel (c k) <> parallel (c' k)
+
+instance monoidIxParContT ::  (Parallel f m, Semigroup (f r), Monoid (m r)) => Monoid (IxParContT m r r a) where
+  mempty = Par $ \_ -> mempty
+
 instance altIxParContT :: (Parallel f m, Alt f, MonadAff m) => Alt (IxParContT m r r) where
   alt (Par c) (Par c') = Par $ \k -> sequential $ parallel (c k) <|> parallel (c' k)
 
