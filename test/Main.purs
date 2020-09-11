@@ -32,7 +32,7 @@ main = launchAff_ $ runSpec' config [ consoleReporter ] $ do
   parallelSpec
   parallelAltSpec
   parallelPlusSpec
-  parallelSmigroupSpec
+  parallelSemigroupSpec
   parallelMonoidSpec
 
 functorSpec :: Spec Unit
