@@ -63,12 +63,12 @@ instance altIxContT ::  Alt m => Alt (IxContT m r o) where
   alt (Do f) (Do g) = Do $ \k -> f k <|> g k
 
 instance plusIxContT :: Plus m => Plus (IxContT m r o) where
-  empty = Do $ \_ -> empty
+  empty = escM empty
 
 instance alternativeIxContT :: Alternative m => Alternative (IxContT m r r)
 
 instance monoidIxContT ::  Monoid (m r) => Monoid (IxContT m r o a) where
-  mempty = Do $ \_ -> mempty
+  mempty = escM mempty
 
 instance monadIxContT :: Monad m => Monad (IxContT m r r)
 
@@ -139,8 +139,11 @@ instance parallelIxContT :: (Parallel f m, Alt f, MonadAff m) => Parallel (IxPar
 
 {-----------------------------------------------–------------------------------}
 
-esc :: forall m r o a . Monad m => r -> IxContT m r o a
-esc = Do <<< const <<< pure
+escM :: forall m r o a . m r -> IxContT m r o a
+escM = Do <<< const
+
+esc :: forall m r o a . Applicative m => r -> IxContT m r o a
+esc = escM <<< pure
 
 ilift :: forall m r a . Monad m => m a -> IxContT m r r a
 ilift m = Do (m >>= _)
